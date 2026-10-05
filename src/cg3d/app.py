@@ -21,20 +21,22 @@ import glfw
 import numpy as np
 from OpenGL.GL import (
     GL_BACK, GL_COLOR_BUFFER_BIT, GL_CULL_FACE, GL_DEPTH_BUFFER_BIT,
-    GL_DEPTH_TEST, GL_FILL, GL_FLAT, GL_FRONT_AND_BACK, GL_LEQUAL, GL_LIGHTING, GL_LINE,
-    GL_MODELVIEW, GL_MODELVIEW_MATRIX, GL_MULTISAMPLE, GL_PROJECTION,
-    GL_PROJECTION_MATRIX, GL_RENDERER, GL_RGB, GL_UNSIGNED_BYTE, GL_VERSION,
-    glClear, glClearColor, glColor3f, glCullFace, glDepthFunc, glDisable, glEnable,
-    glGetFloatv, glGetString, glLoadIdentity, glLoadMatrixf, glMatrixMode,
-    glPolygonMode, glReadPixels, glShadeModel, glViewport,
+    GL_DEPTH_TEST, GL_FILL, GL_FRONT_AND_BACK, GL_LEQUAL, GL_LIGHTING,
+    GL_LINE, GL_MODELVIEW, GL_MODELVIEW_MATRIX, GL_MULTISAMPLE,
+    GL_PROJECTION, GL_PROJECTION_MATRIX, GL_RENDERER, GL_RGB,
+    GL_UNSIGNED_BYTE, GL_VERSION, glClear, glClearColor, glColor3f,
+    glCullFace, glDepthFunc, glDisable, glEnable, glGetFloatv, glGetString,
+    glLoadIdentity, glLoadMatrixf, glMatrixMode, glPolygonMode, glReadPixels,
+    glViewport,
 )
 
 from . import color as colormod
 from . import transforms as tf
 from .geometry import Mesh, all_meshes
-from .lighting import Light, Material, apply_material, place_light, setup_lighting
+from .hud import Hud
+from .lighting import Light, Material, apply_material, phong_shade, place_light, setup_lighting
 from .quaternion import Quaternion
-from .renderer import draw_axes, draw_grid, draw_light_marker, draw_mesh, draw_normals
+from .renderer import draw_axes, draw_light, draw_mesh, draw_mesh_detailed, draw_normals
 from .trackball import Trackball
 
 CONTROLES = """
@@ -45,20 +47,34 @@ CONTROLES = """
  Setas | PgUp PgDn             Translação X,Y | Z            (matriz T)
  X Y Z  (Shift inverte)        Rotação nos eixos principais  (R_x R_y R_z)
  + / -                         Escala uniforme               (matriz S)
+ ---------------------------  ILUMINAÇÃO  ----------------------------
+ L                             Liga/desliga toda a iluminação
+ 4 / 5 / 6                     Liga/desliga AMBIENTE / DIFUSA / ESPECULAR
+ Shift + 4 / 5 / 6             Altera a intensidade da componente
+ J / K                         Diminui / aumenta o brilho especular (n)
+ Shift + Setas | Shift + PgUp/PgDn   Move a luz em X,Y | Z
+ M                             Luz orbitando o objeto (anima a posição)
+ U                             Luz PONTUAL (w=1) / DIRECIONAL (w=0)
+ 7                             Cor da luz (branca, quente, fria, verde)
+ 9                             Mostra/oculta o marcador da luz
+ B                             Sombreamento: Detalhado (GL_SMOOTH) / Flat
+ -----------------------------  CORES  --------------------------------
  Q/A  W/S  E/D                 Canal R / G / B  ±            (modelo RGB)
  H                             Gira o matiz (+20° no espaço HSV)
  O                             Material vindo da máscara HSV do OpenCV
  [ ]   , .   ; '               Máscara: desloca matiz | largura | sat. mín.
  V                             Abre/fecha a janela de análise do OpenCV
- L                             Liga/desliga iluminação
- Shift + Setas                 Move a luz
- N  F  G  C                    Normais | Wireframe | Eixos/grade | Culling
+ ----------------------------  OUTROS  --------------------------------
+ N  F  G  C                    Normais | Wireframe | Eixos | Culling
+ I                             Mostra/oculta os painéis na tela
  Espaço                        Rotação automática (quatérnio incremental)
  T                             Confere matrizes sintéticas x GLU
  P                             Salva screenshot (cena + painel OpenCV)
  R                             Reinicia tudo        |  Esc  sai
 =======================================================================
 """
+
+INTENSITY_STEPS = [0.0, 0.15, 0.3, 0.5, 0.75, 1.0]
 
 
 @dataclass
@@ -72,13 +88,17 @@ class SceneState:
     use_opencv_color: bool = False
     show_normals: bool = False
     wireframe: bool = False
-    show_helpers: bool = True
+    show_axes: bool = False
+    show_hud: bool = True
     cull: bool = True
     auto_rotate: bool = False
+    orbit_light: bool = False
+    detailed_shading: bool = True
+    show_light_marker: bool = True
 
 
 class App:
-    def __init__(self, width: int = 1100, height: int = 750, title: str = "CG 3D — Trackball com Quatérnios"):
+    def __init__(self, width: int = 1200, height: int = 780, title: str = "CG 3D — Trackball com Quatérnios"):
         self.width, self.height = width, height
         self.title = title
         self.meshes: list[Mesh] = all_meshes()
@@ -95,6 +115,8 @@ class App:
         self.cv_window_open = False
         self._update_opencv_color()
 
+        self.hud_light = Hud(0.5)
+        self.hud_faces = Hud(0.48)
         self.window = None
         self._last_time = 0.0
         self._screenshot_count = 0
@@ -132,7 +154,6 @@ class App:
         # perto da câmera que o já armazenado no Z-buffer.
         glEnable(GL_DEPTH_TEST)
         glDepthFunc(GL_LEQUAL)
-        glShadeModel(GL_FLAT)          # uma normal por face → faces facetadas
         glEnable(GL_MULTISAMPLE)
         setup_lighting(self.light)
 
@@ -144,9 +165,11 @@ class App:
         aspect = fb_w / max(fb_h, 1)
         return tf.perspective(self.state.fovy, aspect, 0.1, 100.0)
 
+    def eye(self) -> tuple[float, float, float]:
+        return (0.0, 0.6, self.state.camera_distance)
+
     def view_matrix(self) -> np.ndarray:
-        eye = (0.0, 0.6, self.state.camera_distance)
-        return tf.look_at(eye, (0.0, 0.0, 0.0), (0.0, 1.0, 0.0))
+        return tf.look_at(self.eye(), (0.0, 0.0, 0.0), (0.0, 1.0, 0.0))
 
     def rotation_matrix(self) -> np.ndarray:
         rx, ry, rz = self.state.euler_deg
@@ -183,10 +206,29 @@ class App:
         )
 
     # ------------------------------------------------------------------ #
+    # Iluminação (Parte 3): a equação de Phong avaliada por face, em NumPy
+    # ------------------------------------------------------------------ #
+    def face_lighting(self):
+        """Para cada face: normal e centro no Espaço do Mundo e o resultado da
+        equação de iluminação. Usa a matriz normal (M⁻¹)ᵀ."""
+        mesh = self.meshes[self.state.mesh_index]
+        m = self.model_matrix()
+        nm = tf.normal_matrix(m)
+        results = []
+        for i in range(len(mesh.faces)):
+            n_world = nm @ mesh.face_normals[i]
+            n_world /= np.linalg.norm(n_world)
+            c_world = tf.transform_point(m, mesh.face_centroid(i))
+            results.append(phong_shade(n_world, c_world, self.eye(), self.light, self.material))
+        return results
+
+    # ------------------------------------------------------------------ #
     # Renderização
     # ------------------------------------------------------------------ #
     def render(self) -> None:
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+        fb_w, fb_h = glfw.get_framebuffer_size(self.window)
+        glViewport(0, 0, fb_w, max(fb_h, 1))
 
         glMatrixMode(GL_PROJECTION)
         glLoadMatrixf(tf.to_gl(self.projection_matrix()))
@@ -195,19 +237,16 @@ class App:
         glMatrixMode(GL_MODELVIEW)
         glLoadMatrixf(tf.to_gl(view))
 
+        self.material.color = self.current_color()
         setup_lighting(self.light)
         if self.light.enabled:
             place_light(self.light)               # luz no Espaço do Mundo
-
-        if self.state.show_helpers:
-            draw_grid()
+            if self.state.show_light_marker:
+                draw_light(self.light.position, self.light.color, self.state.translation)
+        if self.state.show_axes:
             draw_axes()
-            if self.light.enabled:
-                draw_light_marker(self.light.position)
 
         glLoadMatrixf(tf.to_gl(view @ self.model_matrix()))
-
-        self.material.color = self.current_color()
         apply_material(self.material)
 
         if self.state.cull and not self.state.wireframe:
@@ -215,33 +254,75 @@ class App:
             glCullFace(GL_BACK)
         else:
             glDisable(GL_CULL_FACE)
-        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE if self.state.wireframe else GL_FILL)
 
         mesh = self.meshes[self.state.mesh_index]
         if self.state.wireframe:
             # Arestas não têm área iluminável: desenha com a cor pura do material.
+            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
             glDisable(GL_LIGHTING)
             glColor3f(*self.material.color)
             draw_mesh(mesh)
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
             setup_lighting(self.light)
+        elif not self.light.enabled:
+            # Sem iluminação: cor chapada — o objeto vira uma silhueta sem volume.
+            glColor3f(*self.material.color)
+            draw_mesh(mesh)
+        elif self.state.detailed_shading:
+            draw_mesh_detailed(mesh)
         else:
             draw_mesh(mesh)
-        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
 
+        faces = self.face_lighting() if self.light.enabled else None
         if self.state.show_normals:
-            draw_normals(mesh)
+            draw_normals(mesh, intensities=[f.n_dot_l for f in faces] if faces else None)
+
+        if self.state.show_hud:
+            self._draw_hud(fb_w, fb_h, faces)
+
+    def _draw_hud(self, fb_w: int, fb_h: int, faces) -> None:
+        lt, st, mat = self.light, self.state, self.material
+        on = lambda b: "ON " if b else "off"  # noqa: E731
+        title = (240, 240, 245)
+        dim = (165, 170, 185)
+        amb_c, dif_c, spe_c = (120, 200, 255), (255, 210, 110), (255, 255, 255)
+        p = lt.position
+        tipo = "DIRECIONAL (w=0)" if lt.directional else "PONTUAL (w=1)"
+        r, g, b = mat.color
+        h, s, v = colormod.rgb_to_hsv(r, g, b)
+        lines = [
+            ("ILUMINACAO - modelo de Phong (Parte 3)", title),
+            (f"Luz {('LIGADA' if lt.enabled else 'DESLIGADA')}: {tipo}  pos=({p[0]:.1f}, {p[1]:.1f}, {p[2]:.1f})  cor {lt.color_name}", dim),
+            (f"[4] Ambiente  {on(lt.use_ambient)} intensidade {lt.ambient_intensity:.2f}", amb_c),
+            (f"[5] Difusa    {on(lt.use_diffuse)} intensidade {lt.diffuse_intensity:.2f}", dif_c),
+            (f"[6] Especular {on(lt.use_specular)} intensidade {lt.specular_intensity:.2f}  brilho n={mat.shininess:.0f} [J/K]", spe_c),
+            (f"Material kd=RGB({r:.2f},{g:.2f},{b:.2f}) HSV({h:.0f},{s:.2f},{v:.2f})  ka=0.6kd  ks={mat.specular[0]:.1f}", dim),
+            (f"[B] Sombreamento: {'DETALHADO (GL_SMOOTH, faces subdivididas)' if st.detailed_shading else 'FLAT (GL_FLAT, 1 cor por face)'}", dim),
+            (f"[M] Luz orbitando: {on(st.orbit_light)}   [U] tipo   [7] cor   [L] liga/desliga", dim),
+        ]
+        self.hud_light.draw(lines, fb_w, fb_h, "top-left")
+
+        if faces:
+            mesh = self.meshes[st.mesh_index]
+            rows = [(f"{mesh.name}: I = ambiente + difusa + especular", title),
+                    ("face   N.L     amb   dif   esp  -> I", dim)]
+            for i, f in enumerate(faces):
+                lum = lambda c: 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]  # noqa: E731
+                tag = "quad" if len(mesh.faces[i]) == 4 else "tri "
+                color = dif_c if f.n_dot_l > 0 else (110, 115, 130)
+                rows.append((
+                    f"{i} {tag} {f.n_dot_l:+.2f}   {lum(f.ambient):.2f}  {lum(f.diffuse):.2f}  "
+                    f"{lum(f.specular):.2f} -> {lum(f.color):.2f}", color))
+            rows.append(("N.L < 0: face de costas para a luz (so ambiente)", dim))
+            self.hud_faces.draw(rows, fb_w, fb_h, "bottom-right")
 
     def _update_title(self) -> None:
         mesh = self.meshes[self.state.mesh_index]
         q = self.trackball.orientation
-        r, g, b = self.current_color()
-        h, s, v = colormod.rgb_to_hsv(r, g, b)
-        luz = "luz ON" if self.light.enabled else "luz OFF"
-        cor = f"OpenCV {self.hsv_range}" if self.state.use_opencv_color else "manual"
         glfw.set_window_title(
             self.window,
             f"{mesh.name} | q=({q.w:+.2f},{q.x:+.2f},{q.y:+.2f},{q.z:+.2f}) | "
-            f"RGB({r:.2f},{g:.2f},{b:.2f}) HSV({h:.0f}°,{s:.2f},{v:.2f}) | {cor} | {luz}",
+            f"{self.light.components_label()}",
         )
 
     def update(self, dt: float) -> None:
@@ -249,6 +330,12 @@ class App:
             # Composição de quatérnios: pequena rotação em torno de Y por quadro.
             step = Quaternion.from_axis_angle((0.0, 1.0, 0.0), math.radians(45.0) * dt)
             self.trackball.orientation = (step * self.trackball.orientation).normalized()
+        if self.state.orbit_light:
+            # gira a posição da luz em torno do eixo Y do mundo (60°/s)
+            rot = tf.rotation_y(60.0 * dt)
+            p = self.light.position
+            x, y, z = (rot @ np.array([p[0], p[1], p[2], 0.0]))[:3]
+            self.light.position = [x, y, z, p[3]]
 
     def run(self) -> None:
         self.init_window()
@@ -301,13 +388,13 @@ class App:
         img = np.frombuffer(data, dtype=np.uint8).reshape(h, w, 3)
         return cv2.cvtColor(np.flipud(img), cv2.COLOR_RGB2BGR)
 
-    def save_screenshot(self, path: str | None = None) -> str:
+    def save_screenshot(self, path: str | None = None, panel: bool = True) -> str:
         self._screenshot_count += 1
         path = path or f"screenshot_{self._screenshot_count:02d}.png"
         cv2.imwrite(path, self.capture())
-        panel_path = path.replace(".png", "_opencv.png")
-        cv2.imwrite(panel_path, self.opencv_panel())
-        print(f"Salvo: {path} e {panel_path}")
+        if panel:
+            cv2.imwrite(path.replace(".png", "_opencv.png"), self.opencv_panel())
+        print(f"Salvo: {path}")
         return path
 
     # ------------------------------------------------------------------ #
@@ -320,12 +407,11 @@ class App:
             print(f"GLU indisponível: {exc}")
             return
         if not (bool(gluPerspective) and bool(gluLookAt)):
-            print("GLU não encontrada neste sistema (libGLU); as matrizes sintéticas "
-                  "continuam validadas pelos testes automatizados (pytest).")
+            print("GLU não encontrada neste sistema (sudo apt install libglu1-mesa); "
+                  "as matrizes sintéticas continuam validadas pelo pytest.")
             return
         fb_w, fb_h = glfw.get_framebuffer_size(self.window)
         aspect = fb_w / max(fb_h, 1)
-        eye = (0.0, 0.6, self.state.camera_distance)
 
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
@@ -334,7 +420,7 @@ class App:
 
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
-        gluLookAt(*eye, 0, 0, 0, 0, 1, 0)
+        gluLookAt(*self.eye(), 0, 0, 0, 0, 1, 0)
         glu_v = np.array(glGetFloatv(GL_MODELVIEW_MATRIX)).reshape(4, 4).T
 
         dp = np.abs(glu_p - self.projection_matrix()).max()
@@ -367,10 +453,15 @@ class App:
     def _on_scroll(self, _win, _dx: float, dy: float) -> None:
         self.state.camera_distance = float(np.clip(self.state.camera_distance - dy * 0.4, 2.5, 25.0))
 
+    def _cycle_intensity(self, attr: str) -> None:
+        current = getattr(self.light, attr)
+        idx = min(range(len(INTENSITY_STEPS)), key=lambda i: abs(INTENSITY_STEPS[i] - current))
+        setattr(self.light, attr, INTENSITY_STEPS[(idx + 1) % len(INTENSITY_STEPS)])
+
     def _on_key(self, win, key, _scancode, action, mods) -> None:  # noqa: C901
         if action not in (glfw.PRESS, glfw.REPEAT):
             return
-        st = self.state
+        st, lt = self.state, self.light
         shift = bool(mods & glfw.MOD_SHIFT)
         step = 0.1
 
@@ -380,20 +471,22 @@ class App:
             st.mesh_index = key - glfw.KEY_1
             print(f"Modelo: {self.meshes[st.mesh_index].name}")
 
-        # --- Translação / luz -------------------------------------------
+        # --- Translação / posição da luz -----------------------------------
         elif key in (glfw.KEY_LEFT, glfw.KEY_RIGHT, glfw.KEY_UP, glfw.KEY_DOWN):
             dx = {glfw.KEY_LEFT: -1, glfw.KEY_RIGHT: 1}.get(key, 0)
             dy = {glfw.KEY_DOWN: -1, glfw.KEY_UP: 1}.get(key, 0)
             if shift:
-                self.light.position[0] += dx * 0.3
-                self.light.position[1] += dy * 0.3
+                lt.position[0] += dx * 0.3
+                lt.position[1] += dy * 0.3
             else:
                 st.translation[0] += dx * step
                 st.translation[1] += dy * step
-        elif key == glfw.KEY_PAGE_UP:
-            st.translation[2] -= step
-        elif key == glfw.KEY_PAGE_DOWN:
-            st.translation[2] += step
+        elif key in (glfw.KEY_PAGE_UP, glfw.KEY_PAGE_DOWN):
+            dz = -1 if key == glfw.KEY_PAGE_UP else 1
+            if shift:
+                lt.position[2] += dz * 0.3
+            else:
+                st.translation[2] += dz * step
 
         # --- Rotação por eixo (matrizes R_x, R_y, R_z) --------------------
         elif key in (glfw.KEY_X, glfw.KEY_Y, glfw.KEY_Z):
@@ -405,6 +498,31 @@ class App:
             st.scale = min(st.scale * 1.1, 4.0)
         elif key in (glfw.KEY_MINUS, glfw.KEY_KP_SUBTRACT):
             st.scale = max(st.scale / 1.1, 0.2)
+
+        # --- Iluminação ----------------------------------------------------
+        elif key == glfw.KEY_L:
+            lt.enabled = not lt.enabled
+        elif key in (glfw.KEY_4, glfw.KEY_5, glfw.KEY_6):
+            comp = {glfw.KEY_4: "ambient", glfw.KEY_5: "diffuse", glfw.KEY_6: "specular"}[key]
+            if shift:
+                self._cycle_intensity(f"{comp}_intensity")
+            else:
+                setattr(lt, f"use_{comp}", not getattr(lt, f"use_{comp}"))
+            print(f"[luz] {lt.components_label()}")
+        elif key == glfw.KEY_J:
+            self.material.shininess = max(self.material.shininess / 1.4, 1.0)
+        elif key == glfw.KEY_K:
+            self.material.shininess = min(self.material.shininess * 1.4, 128.0)
+        elif key == glfw.KEY_M:
+            st.orbit_light = not st.orbit_light
+        elif key == glfw.KEY_U:
+            lt.toggle_type()
+        elif key == glfw.KEY_7:
+            lt.next_color()
+        elif key == glfw.KEY_B:
+            st.detailed_shading = not st.detailed_shading
+        elif key == glfw.KEY_9:
+            st.show_light_marker = not st.show_light_marker
 
         # --- Cor RGB / HSV -------------------------------------------------
         elif key in (glfw.KEY_Q, glfw.KEY_A, glfw.KEY_W, glfw.KEY_S, glfw.KEY_E, glfw.KEY_D):
@@ -454,17 +572,17 @@ class App:
                 except cv2.error:
                     pass
 
-        # --- Iluminação e visualização -------------------------------------
-        elif key == glfw.KEY_L:
-            self.light.enabled = not self.light.enabled
+        # --- Visualização ---------------------------------------------------
         elif key == glfw.KEY_N:
             st.show_normals = not st.show_normals
         elif key == glfw.KEY_F:
             st.wireframe = not st.wireframe
         elif key == glfw.KEY_G:
-            st.show_helpers = not st.show_helpers
+            st.show_axes = not st.show_axes
         elif key == glfw.KEY_C:
             st.cull = not st.cull
+        elif key == glfw.KEY_I:
+            st.show_hud = not st.show_hud
         elif key == glfw.KEY_SPACE:
             st.auto_rotate = not st.auto_rotate
         elif key == glfw.KEY_T:
@@ -474,15 +592,17 @@ class App:
         elif key == glfw.KEY_R:
             self.reset()
 
-    def reset(self) -> None:
+    def reset(self, verbose: bool = True) -> None:
         mesh_index = self.state.mesh_index
         self.state = SceneState(mesh_index=mesh_index)
         self.trackball.reset()
         self.light = Light()
-        self.manual_color = list(Material().color)
+        self.material = Material()
+        self.manual_color = list(self.material.color)
         self.hsv_range = colormod.HSVRange()
         self._update_opencv_color()
-        print("Cena reiniciada.")
+        if verbose:
+            print("Cena reiniciada.")
 
 
 def main(argv: list[str] | None = None) -> int:

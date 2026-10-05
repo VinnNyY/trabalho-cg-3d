@@ -132,5 +132,33 @@ def tetrahedron(r: float = 1.3) -> Mesh:
     return Mesh("Tetraedro", np.array(vertices), faces)
 
 
+def subdivide_faces(mesh: Mesh, level: int = 16) -> tuple[np.ndarray, np.ndarray]:
+    """Divide cada face em uma grade de level² triângulos menores, todos com a
+    MESMA normal da face original (a geometria não muda).
+
+    Por que isso importa para a iluminação: o OpenGL fixo calcula a luz nos
+    VÉRTICES. Com só 3 vértices por face, uma luz pontual não consegue formar
+    um reflexo especular no meio da face. Com a face subdividida, L e H mudam
+    de vértice para vértice e o brilho aparece onde deve aparecer.
+
+    Retorna (posições, normais), ambos (T·3, 3) prontos para glDrawArrays."""
+    positions, normals = [], []
+    for f_idx, face in enumerate(mesh.faces):
+        n = mesh.face_normals[f_idx]
+        corners = mesh.vertices[list(face)]
+        # leque de triângulos a partir do vértice 0 (quad → 2 triângulos)
+        for k in range(1, len(face) - 1):
+            a, b, c = corners[0], corners[k], corners[k + 1]
+            for i in range(level):
+                for j in range(level - i):
+                    p = lambda u, v: a + (b - a) * (u / level) + (c - a) * (v / level)  # noqa: E731
+                    positions += [p(i, j), p(i + 1, j), p(i, j + 1)]
+                    if i + j < level - 1:
+                        positions += [p(i + 1, j), p(i + 1, j + 1), p(i, j + 1)]
+            count = len(positions) - len(normals)
+            normals += [n] * count
+    return np.asarray(positions, dtype=np.float32), np.asarray(normals, dtype=np.float32)
+
+
 def all_meshes() -> list[Mesh]:
     return [pyramid(), octahedron(), tetrahedron()]
