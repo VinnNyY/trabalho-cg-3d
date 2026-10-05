@@ -12,19 +12,28 @@ Aplicação em **Python 3** que integra modelagem geométrica por malha poligona
 
 ## Como executar
 
-### Ubuntu / Linux
+### Ubuntu / Linux — primeira vez
 ```bash
-sudo apt install python3-venv python3-pip libglu1-mesa   # uma vez só
+sudo apt install python3-venv python3-pip libglu1-mesa git   # pacotes do sistema (uma vez só)
+git clone <url-deste-repositorio> trabalho-cg
 cd trabalho-cg
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 python src/main.py
 ```
-> Wayland (padrão no Ubuntu 24.04): se a janela não abrir, use `PYGLFW_LIBRARY_VARIANT=x11 python src/main.py`. Se a janela do OpenCV (tecla `V`) reclamar do Qt, acrescente `QT_QPA_PLATFORM=xcb`.
+
+### Ubuntu / Linux — para reabrir depois
+```bash
+cd trabalho-cg
+source .venv/bin/activate
+python src/main.py
+```
+Com o ambiente ativo, o terminal mostra `(.venv)` no início da linha.
 
 ### Windows
 ```powershell
+git clone <url-deste-repositorio> trabalho-cg
 cd trabalho-cg
 python -m venv .venv
 .venv\Scripts\Activate.ps1
@@ -32,38 +41,23 @@ pip install -r requirements.txt
 python src/main.py
 ```
 
-### Outros comandos
+### Outros comandos (com o `.venv` ativo)
 ```bash
 python src/main.py --imagem foto.jpg   # usa uma foto sua na análise de cor HSV
 pytest                                 # 127 testes da parte matemática
 python src/validar_iluminacao.py       # compara os pixels do OpenGL com a equação de Phong
+deactivate                             # sai do ambiente virtual
 ```
 
----
-
-## Estrutura do repositório
-
-```
-trabalho-cg/
-├── src/
-│   ├── main.py                  # ponto de entrada
-│   ├── validar_iluminacao.py    # prova que o OpenGL desenha exatamente a equação de Phong
-│   └── cg3d/
-│       ├── app.py               # janela GLFW, contexto OpenGL, laço e controles  (Partes 1–4)
-│       ├── geometry.py          # vértices/faces, normais, subdivisão das faces    (Partes 1 e 3)
-│       ├── renderer.py          # GL_TRIANGLES / GL_QUADS, normais, fonte de luz visível
-│       ├── transforms.py        # T, S, Rx, Ry, Rz, lookAt, perspective, frustum   (Parte 2)
-│       ├── lighting.py          # GL_LIGHTING/GL_LIGHT0 + equação de Phong em NumPy (Parte 3)
-│       ├── color.py             # RGB↔HSV, máscara HSV e cor média com OpenCV     (Parte 3)
-│       ├── hud.py               # painéis de texto na tela (desenhados com OpenCV)
-│       ├── quaternion.py        # quatérnios unitários e conversão para matriz 4×4  (Parte 4)
-│       └── trackball.py         # mapeamento 2D → hemisfério e rotação do mouse    (Parte 4)
-├── tests/                       # pytest: valida toda a matemática
-├── docs/                        # imagens geradas pela própria aplicação
-├── requirements.txt
-├── pytest.ini
-└── .gitignore                   # ignora .venv/, __pycache__/ etc.
-```
+### Problemas comuns
+| Sintoma | Solução |
+|---|---|
+| `Comando 'python' não encontrado` | O `.venv` não está ativo: `source .venv/bin/activate` |
+| `ModuleNotFoundError: No module named 'cg3d'` ou `can't open file .../src/...` | Você está fora da pasta do projeto: `cd trabalho-cg` |
+| A janela não abre (Wayland, Ubuntu 24.04) | `PYGLFW_LIBRARY_VARIANT=x11 python src/main.py` |
+| A janela do OpenCV (`V`) reclama do Qt/Wayland | `QT_QPA_PLATFORM=xcb python src/main.py` |
+| A janela do OpenCV não abre de jeito nenhum | `pip uninstall opencv-python-headless && pip install --force-reinstall opencv-python` |
+| Tecla `T` diz que a GLU não foi encontrada | `sudo apt install libglu1-mesa` |
 
 ---
 
@@ -100,6 +94,32 @@ trabalho-cg/
 | `T` | Compara as matrizes sintéticas com `gluLookAt`/`gluPerspective` |
 | `P` | Salva screenshot da cena e do painel do OpenCV |
 | `R` · `Esc` | Reinicia · Sai |
+
+---
+
+## Estrutura do repositório
+
+```
+trabalho-cg/
+├── src/
+│   ├── main.py                  # ponto de entrada
+│   ├── validar_iluminacao.py    # prova que o OpenGL desenha exatamente a equação de Phong
+│   └── cg3d/
+│       ├── app.py               # janela GLFW, contexto OpenGL, laço e controles  (Partes 1–4)
+│       ├── geometry.py          # vértices/faces, normais, subdivisão das faces    (Partes 1 e 3)
+│       ├── renderer.py          # GL_TRIANGLES / GL_QUADS, normais, fonte de luz visível
+│       ├── transforms.py        # T, S, Rx, Ry, Rz, lookAt, perspective, frustum   (Parte 2)
+│       ├── lighting.py          # GL_LIGHTING/GL_LIGHT0 + equação de Phong em NumPy (Parte 3)
+│       ├── color.py             # RGB↔HSV, máscara HSV e cor média com OpenCV     (Parte 3)
+│       ├── hud.py               # painéis de texto na tela (desenhados com OpenCV)
+│       ├── quaternion.py        # quatérnios unitários e conversão para matriz 4×4  (Parte 4)
+│       └── trackball.py         # mapeamento 2D → hemisfério e rotação do mouse    (Parte 4)
+├── tests/                       # pytest: valida toda a matemática
+├── docs/                        # imagens geradas pela própria aplicação
+├── requirements.txt
+├── pytest.ini
+└── .gitignore                   # ignora .venv/, __pycache__/ etc.
+```
 
 ---
 
