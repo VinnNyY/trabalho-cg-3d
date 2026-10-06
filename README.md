@@ -1,12 +1,15 @@
 # Aplicação Interativa 3D — Computação Gráfica e Visão Computacional
 
-Aplicação em **Python 3** que integra modelagem geométrica por malha poligonal, transformações em coordenadas homogêneas, **iluminação de Phong** (ambiente, difusa e especular), modelos de cor RGB/HSV com análise no **OpenCV** e um **Trackball virtual com quatérnios** para girar o objeto com o mouse.
+Aplicação em **Python 3** que junta tudo o que vimos nas aulas:
+- modelagem de sólidos por vértices e faces;
+- transformações com matrizes 4×4;
+- iluminação (ambiente, difusa e especular);
+- cores RGB/HSV com **OpenCV**;
+- **trackball com quatérnios** para girar o objeto com o mouse.
 
-**Tecnologias:** Python 3 · PyOpenGL · GLFW · OpenCV (`cv2`) · NumPy · pytest
+**Tecnologias:** Python 3 · PyOpenGL · Pygame · OpenCV (`cv2`) · NumPy
 
-![Painel de iluminação](docs/iluminacao_painel.png)
-
-*No canto superior esquerdo ficam os parâmetros da luz. No inferior direito aparece, para cada face, o N·L e as parcelas ambiente, difusa e especular, calculados em tempo real. As normais são coloridas de acordo com quanto a face recebe de luz.*
+![Aplicação rodando](docs/iluminacao_painel.png)
 
 ---
 
@@ -14,186 +17,146 @@ Aplicação em **Python 3** que integra modelagem geométrica por malha poligona
 
 ### Ubuntu / Linux — primeira vez
 ```bash
-sudo apt install python3-venv python3-pip libglu1-mesa git   # pacotes do sistema (uma vez só)
-git clone <url-deste-repositorio> trabalho-cg
-cd trabalho-cg
+sudo apt install python3-venv python3-pip libglu1-mesa git
+git clone https://github.com/VinnNyY/trabalho-cg-3d.git
+cd trabalho-cg-3d
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 python src/main.py
 ```
 
-### Ubuntu / Linux — para reabrir depois
+### Para reabrir depois
 ```bash
-cd trabalho-cg
+cd trabalho-cg-3d
 source .venv/bin/activate
 python src/main.py
 ```
-Com o ambiente ativo, o terminal mostra `(.venv)` no início da linha.
 
 ### Windows
 ```powershell
-git clone <url-deste-repositorio> trabalho-cg
-cd trabalho-cg
+git clone https://github.com/VinnNyY/trabalho-cg-3d.git
+cd trabalho-cg-3d
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 python src/main.py
 ```
 
-### Outros comandos (com o `.venv` ativo)
+### Outros comandos
 ```bash
-python src/main.py --imagem foto.jpg   # usa uma foto sua na análise de cor HSV
-pytest                                 # 127 testes da parte matemática
-python src/validar_iluminacao.py       # compara os pixels do OpenGL com a equação de Phong
-deactivate                             # sai do ambiente virtual
+pytest                                  # roda os testes da parte matemática
+python src/main.py --imagem foto.jpg    # usa uma foto sua na análise de cor
 ```
 
-### Problemas comuns
-| Sintoma | Solução |
+| Problema | Solução |
 |---|---|
-| `Comando 'python' não encontrado` | O `.venv` não está ativo: `source .venv/bin/activate` |
-| `ModuleNotFoundError: No module named 'cg3d'` ou `can't open file .../src/...` | Você está fora da pasta do projeto: `cd trabalho-cg` |
-| A janela não abre (Wayland, Ubuntu 24.04) | `PYGLFW_LIBRARY_VARIANT=x11 python src/main.py` |
-| A janela do OpenCV (`V`) reclama do Qt/Wayland | `QT_QPA_PLATFORM=xcb python src/main.py` |
-| A janela do OpenCV não abre de jeito nenhum | `pip uninstall opencv-python-headless && pip install --force-reinstall opencv-python` |
-| Tecla `T` diz que a GLU não foi encontrada | `sudo apt install libglu1-mesa` |
+| `Comando 'python' não encontrado` | Ative o ambiente: `source .venv/bin/activate` |
+| `No module named ...` ou `can't open file` | Entre na pasta do projeto: `cd trabalho-cg-3d` |
+| Janela do OpenCV (tecla `V`) reclama do Qt/Wayland | `QT_QPA_PLATFORM=xcb python src/main.py` |
 
 ---
 
 ## Controles
 
-| Entrada | Ação |
+| Tecla | Ação |
 |---|---|
-| **Arrastar com o botão esquerdo** | Trackball virtual (quatérnios) |
-| Roda do mouse | Zoom da câmera |
+| **Arrastar o mouse** | Gira o objeto (trackball com quatérnios) |
+| Roda do mouse | Zoom |
 | `1` `2` `3` | Pirâmide / Octaedro / Tetraedro |
-| Setas · `PgUp` `PgDn` | Translação em X, Y · Z (matriz **T**) |
-| `X` `Y` `Z` (Shift inverte) | Rotação nos eixos principais (**Rx Ry Rz**) |
-| `+` `-` | Escala uniforme (matriz **S**) |
+| Setas, `PgUp` `PgDn` | Translação (matriz **T**) |
+| `X` `Y` `Z` (Shift inverte) | Rotação nos eixos (matrizes **Rx Ry Rz**) |
+| `+` `-` | Escala (matriz **S**) |
 | **Iluminação** | |
-| `L` | Liga/desliga toda a iluminação |
-| `4` · `5` · `6` | Liga/desliga a componente **ambiente · difusa · especular** |
-| `Shift` + `4`/`5`/`6` | Muda a intensidade da componente (0 → 0,15 → … → 1) |
-| `J` / `K` | Diminui / aumenta o brilho especular *n* |
-| `Shift` + Setas · `Shift` + `PgUp`/`PgDn` | Move a luz em X, Y · Z |
-| `M` | Luz orbitando o objeto |
-| `U` | Luz **pontual** (w = 1) / **direcional** (w = 0) |
-| `7` | Cor da luz: branca, quente, fria, verde |
-| `B` | Sombreamento **detalhado** (GL_SMOOTH) / **flat** (GL_FLAT) |
-| `9` | Mostra/oculta o marcador da luz |
+| `L` | Liga/desliga a iluminação |
+| `4` `5` `6` | Liga/desliga **ambiente**, **difusa** e **especular** |
+| `J` `K` | Menos / mais brilho especular |
+| `Shift` + setas, `Shift` + `PgUp`/`PgDn` | Move a luz |
+| `M` | Luz girando em volta do objeto |
+| `U` | Luz pontual / direcional |
+| `7` | Cor da luz |
+| `B` | Sombreamento detalhado / flat |
 | **Cores** | |
-| `Q`/`A` · `W`/`S` · `E`/`D` | Aumenta/diminui os canais **R · G · B** |
-| `H` | Gira o matiz +20° no espaço **HSV** |
-| `O` | Usa a cor da máscara HSV do OpenCV como material |
-| `[` `]` · `,` `.` · `;` `'` | Máscara: desloca matiz · largura da faixa · saturação mínima |
-| `V` | Abre/fecha a janela de análise do OpenCV |
+| `Q`/`A`, `W`/`S`, `E`/`D` | Mais/menos vermelho, verde, azul (RGB) |
+| `H` | Muda a matiz (HSV) |
+| `O` | Usa a cor que veio da máscara do OpenCV |
+| `[` `]` | Muda a faixa de cor da máscara |
+| `V` | Abre a janela do OpenCV |
 | **Outros** | |
-| `N` · `F` · `G` · `C` · `I` | Normais · Wireframe · Eixos · Culling · Painéis na tela |
-| `Espaço` | Rotação automática (composição incremental de quatérnios) |
-| `T` | Compara as matrizes sintéticas com `gluLookAt`/`gluPerspective` |
-| `P` | Salva screenshot da cena e do painel do OpenCV |
-| `R` · `Esc` | Reinicia · Sai |
+| `N` | Mostra as normais |
+| `F` | Wireframe |
+| `G` | Eixos X, Y, Z |
+| `I` | Esconde/mostra o painel de texto |
+| `Espaço` | Rotação automática |
+| `R` | Reinicia |
+| `Esc` | Sai |
 
 ---
 
-## Estrutura do repositório
+## Organização do código
 
 ```
-trabalho-cg/
+trabalho-cg-3d/
 ├── src/
-│   ├── main.py                  # ponto de entrada
-│   ├── validar_iluminacao.py    # prova que o OpenGL desenha exatamente a equação de Phong
-│   └── cg3d/
-│       ├── app.py               # janela GLFW, contexto OpenGL, laço e controles  (Partes 1–4)
-│       ├── geometry.py          # vértices/faces, normais, subdivisão das faces    (Partes 1 e 3)
-│       ├── renderer.py          # GL_TRIANGLES / GL_QUADS, normais, fonte de luz visível
-│       ├── transforms.py        # T, S, Rx, Ry, Rz, lookAt, perspective, frustum   (Parte 2)
-│       ├── lighting.py          # GL_LIGHTING/GL_LIGHT0 + equação de Phong em NumPy (Parte 3)
-│       ├── color.py             # RGB↔HSV, máscara HSV e cor média com OpenCV     (Parte 3)
-│       ├── hud.py               # painéis de texto na tela (desenhados com OpenCV)
-│       ├── quaternion.py        # quatérnios unitários e conversão para matriz 4×4  (Parte 4)
-│       └── trackball.py         # mapeamento 2D → hemisfério e rotação do mouse    (Parte 4)
-├── tests/                       # pytest: valida toda a matemática
-├── docs/                        # imagens geradas pela própria aplicação
+│   ├── main.py            # janela (pygame), câmera, desenho, teclado e mouse
+│   ├── geometria.py       # Parte 1: vértices e faces | Parte 3: normais
+│   ├── transformacoes.py  # Parte 2: matrizes T, R, S e composição
+│   ├── iluminacao.py      # Parte 3: luz ambiente, difusa e especular
+│   ├── cores.py           # Parte 3: RGB, HSV e máscara com OpenCV
+│   └── quaternios.py      # Parte 4: quatérnios e trackball
+├── tests/
+│   └── test_matematica.py # testes das contas de cada parte
+├── docs/                  # imagens do README
 ├── requirements.txt
-├── pytest.ini
-└── .gitignore                   # ignora .venv/, __pycache__/ etc.
+└── .gitignore             # ignora a pasta .venv/
 ```
 
 ---
 
-## Onde cada requisito foi atendido
+## Parte 1 — Estrutura e modelagem (Aulas 0_0, 1_0, 1_1, 6_0, 6_1)
 
-### Parte 1 — Estrutura, ambiente e modelagem base
-| Requisito | Implementação |
-|---|---|
-| `src/`, `requirements.txt`, `.gitignore` ignorando `.venv/` | raiz do repositório |
-| Contexto via GLFW + `GL_DEPTH_TEST` | `App.init_window()` e `App._init_gl()` em `app.py` |
-| Sólido definido por listas de vértices e faces | `pyramid()`, `octahedron()`, `tetrahedron()` em `geometry.py` |
-| Malha com `GL_TRIANGLES` / `GL_QUADS` | `draw_mesh()` em `renderer.py`. A pirâmide usa **os dois**: laterais em triângulos e base em quad |
+- **Janela e OpenGL:** `inicializar()` em `main.py` abre a janela com pygame, liga o `GL_DEPTH_TEST` e configura a perspectiva com `gluPerspective`.
+- **Sólidos:** em `geometria.py`, cada sólido é uma lista de vértices mais uma lista de faces com os índices dos vértices, como na Aula 6_0.
+- **Desenho:** `desenhar_solido()` usa `GL_TRIANGLES` nas faces triangulares e `GL_QUADS` na base da pirâmide.
 
-Todas as faces estão em ordem **anti-horária vista de fora**. Os testes comprovam isso de três formas: as normais apontam para fora, a malha é fechada e `V − A + F = 2`.
+```python
+PIRAMIDE_FACES = [
+    (0, 1, 4),       # frente
+    (1, 2, 4),       # direita
+    (2, 3, 4),       # trás
+    (3, 0, 4),       # esquerda
+    (0, 3, 2, 1),    # base (quadrado -> GL_QUADS)
+]
+```
 
-### Parte 2 — Transformações e espaços de coordenadas
-| Requisito | Implementação |
-|---|---|
-| Matrizes 4×4 `T`, `S`, `Rx`, `Ry`, `Rz` | `translation`, `scale`, `rotation_x/y/z` em `transforms.py` |
-| Composição `M = T · R · S` | `model_matrix()` em `transforms.py` e `App.model_matrix()` |
-| Objeto → Mundo (Modelo) e Mundo → Câmera (Visão) | `App.model_matrix()` e `look_at()` (matriz sintética) |
-| Perspectiva | `perspective()` e `frustum()` (sintéticas) |
+## Parte 2 — Transformações (Aulas 2_0, 3_0, 4_0)
 
-As matrizes são escritas em NumPy como no quadro (vetor coluna) e enviadas com `glLoadMatrixf(M.T)`, já que o OpenGL é coluna-maior.
+- **Matrizes:** em `transformacoes.py`, cada transformação é uma matriz 4×4 em coordenadas homogêneas, feita com `np.array`: `matriz_translacao`, `matriz_escala`, `matriz_rotacao_x/y/z`.
+- **Composição:** `M = T @ R @ S`. A matriz da direita age primeiro: o objeto escala, depois gira em torno do próprio centro e só então é transladado.
+- **Câmera:** `gluLookAt` cria a Matriz de Visão (Mundo → Câmera).
+- **Objeto:** `glMultMatrixf(M.T)` aplica a Matriz de Modelo (Objeto → Mundo). Usamos a transposta porque o NumPy guarda a matriz por linhas e o OpenGL lê por colunas.
 
-**Por que a ordem importa:** o vértice é multiplicado à direita, então `S` age primeiro, depois `R` e por último `T`. Assim o objeto escala e gira em torno do próprio centro antes de ser levado à posição. Com `R · T`, ele giraria em torno da origem do mundo, como se estivesse em órbita. O teste `test_ordem_importa` mostra essa diferença com números.
-
-### Parte 3 — Normais, iluminação e cor
+## Parte 3 — Normais, iluminação e cor (Aulas 2_0, 5_0, 5_1, 6_0)
 
 ![Componentes da iluminação](docs/componentes_iluminacao.png)
 
 **Normais**
+- `calcular_normal()` faz `N = (V1 − V0) × (V2 − V0)` com `np.cross` e divide pelo tamanho para que `|N| = 1`.
+- Cada face recebe sua normal com `glNormal3fv()` antes dos vértices.
 
-| Requisito | Implementação |
-|---|---|
-| `N = (V1 − V0) × (V2 − V0)` | `face_normal()` em `geometry.py` |
-| Normalização `\|N\| = 1` | `face_normal()`, com teste em `test_normais_unitarias` |
-| `glNormal3fv()` por face | `draw_mesh()` em `renderer.py` |
+**Iluminação** (`iluminacao.py`)
+- `glEnable(GL_LIGHTING)` e `glEnable(GL_LIGHT0)` ligam o sistema de luz.
+- As três componentes da luz são definidas com `glLightfv`:
+  - **Ambiente:** ilumina tudo igual. Sozinha, o objeto fica "chapado" (imagem 1).
+  - **Difusa:** depende de `N · L`, o ângulo entre a normal e a luz. Mostra o volume do objeto (imagem 2).
+  - **Especular:** o reflexo brilhante, que depende de onde está a câmera (imagem 3).
+- A posição da luz é definida logo depois do `gluLookAt`. Assim a luz fica parada no mundo e as faces mudam de tom quando o objeto gira.
+- O painel no canto da tela mostra o `N · L` de cada face em tempo real. Quando o valor é negativo, a face está de costas para a luz e recebe só a componente ambiente.
+- O **modo detalhado** (tecla `B`) existe porque o OpenGL calcula a luz só nos vértices. `dividir_triangulo()` divide cada face em triângulos menores com a mesma normal, então a luz é calculada em mais pontos e o brilho especular aparece no meio da face.
 
-**Iluminação e sombreamento**
-
-| Requisito | Implementação |
-|---|---|
-| `glEnable(GL_LIGHTING)` e `glEnable(GL_LIGHT0)` | `setup_lighting()` em `lighting.py` |
-| Componente **ambiente** | `GL_AMBIENT` da luz × `GL_AMBIENT` do material (tecla `4`) |
-| Componente **difusa** | `GL_DIFFUSE`, lei de Lambert `max(N·L, 0)` (tecla `5`) |
-| Componente **especular** | `GL_SPECULAR` + `GL_SHININESS`, termo `max(N·H, 0)ⁿ` (tecla `6`, `J`/`K`) |
-| Sombreamento conforme a **posição da luz** | `place_light()` depois da Matriz de Visão. A luz é móvel (`Shift`+setas, `M`) e fica visível como uma esfera ligada ao objeto por um raio tracejado |
-
-A equação que o OpenGL calcula, também implementada em NumPy em `phong_shade()`:
-
-```
-I = A_global·kₐ  +  A_luz·kₐ  +  D_luz·k_d·max(N·L, 0)  +  S_luz·k_s·max(N·H, 0)ⁿ
-                    ambiente      difusa (Lambert)          especular (Blinn-Phong)
-
-L = direção ponto → luz      V = direção ponto → olho      H = normalize(L + V)
-```
-
-Detalhes da implementação:
-
-* **Cada componente pode ser ligada e desligada** (`4`/`5`/`6`), e a imagem acima mostra o efeito isolado de cada uma. Só com ambiente, o objeto perde o volume. A difusa revela a forma. A especular cria o reflexo que depende do observador.
-* **O painel na tela mostra a equação face por face**: N·L e as parcelas ambiente, difusa e especular. Quando N·L < 0, a face está de costas para a luz e recebe só a parcela ambiente.
-* **Pontual × direcional** (`U`): com `w = 1` os raios saem de um ponto e L muda ao longo da face. Com `w = 0` os raios são paralelos, como os do Sol.
-* **Sombreamento detalhado** (`B`): o OpenGL fixo calcula a luz só nos vértices, e com 3 vértices por face não sobra lugar para formar um reflexo especular. Por isso cada face é subdividida em triângulos menores, mantendo **a mesma normal da face**. Assim a luz é avaliada em vários pontos e aparece o degradê da luz pontual. No modo flat, cada face recebe uma única cor (`GL_FLAT`).
-* `GL_NORMALIZE` fica ligado porque a escala `S` muda o comprimento das normais. As normais usadas no painel passam pela matriz normal `(M⁻¹)ᵀ`.
-* **Validação:** `python src/validar_iluminacao.py` desenha os três sólidos em várias orientações, lê os pixels com `glReadPixels` e compara com `phong_shade()`. A diferença máxima medida foi de **0,5%**.
-
-**Cores e OpenCV**
-
-| Requisito | Implementação |
-|---|---|
-| Cor dinâmica em RGB e conversão para HSV | teclas `Q A W S E D H`; `rgb_to_hsv()` e `hsv_to_rgb()` em `color.py` |
-| Máscara por limites de matiz e saturação → material | `hsv_mask()` (`cv2.inRange`) e `mask_mean_color()` (`cv2.mean` com máscara) |
-| Cor da luz × cor do material | tecla `7`: a luz quente/fria/verde multiplica a cor do objeto |
+**Cores** (`cores.py`)
+- `rgb_para_hsv()` implementa as fórmulas da aula. O terminal mostra o resultado ao lado do `cv2.cvtColor` para comparar.
+- A máscara usa `cv2.inRange` com limites de matiz e saturação. `cv2.mean` com a máscara calcula a cor média, que vira o material do objeto (tecla `O`).
 
 ![Análise HSV](docs/analise_hsv_opencv.png)
 
@@ -201,54 +164,28 @@ Detalhes da implementação:
 |---|---|
 | ![Octaedro](docs/octaedro_opencv.png) | ![Tetraedro](docs/tetraedro_luz_quente.png) |
 
-### Parte 4 — Quatérnios e Trackball
-| Requisito | Implementação |
-|---|---|
-| Capturar clique e arraste | `_on_mouse_button()` e `_on_cursor()` em `app.py` |
-| `(x, y)` da tela → `(x, y, z)` no hemisfério | `screen_to_ndc()` + `project_to_sphere()` em `trackball.py` |
-| Eixo por produto vetorial, ângulo por produto escalar | `rotation_between()` em `trackball.py` |
-| Quatérnio unitário `q = (w, x, y, z)` | `Quaternion.from_axis_angle()` em `quaternion.py` |
-| Acumular `q_total = q_novo · q_total` | `Trackball.drag()`, com renormalização |
-| Converter para 4×4 e enviar ao pipeline | `Quaternion.to_matrix()` → entra em `R` da matriz de modelo |
+## Parte 4 — Quatérnios e Trackball (Aula 7_0)
 
-```
-x² + y² ≤ 1  →  z = √(1 − x² − y²)
-caso contrário →  (x, y) normalizado, z = 0   (na borda gira em torno do eixo de visão)
-```
+Tudo está em `quaternios.py`. O quatérnio é uma tupla `(w, x, y, z)`. A cada movimento do mouse:
 
-**Gimbal lock:** com ângulos de Euler, depois de girar 90° em Y, as rotações em X e Z passam a produzir o mesmo movimento e perde-se um grau de liberdade. O teste `test_sem_gimbal_lock` reproduz isso com as matrizes da Parte 2 e mostra que, com quatérnios, as duas rotações continuam diferentes.
+1. `mapear_para_esfera()` converte a posição do mouse em um ponto `(x, y, z)` sobre um hemisfério de raio 1: `z = √(1 − x² − y²)`.
+2. `rotacao_do_arraste()` calcula:
+   - **eixo** = ponto anterior × ponto atual (produto vetorial);
+   - **ângulo** = `acos` do produto escalar entre os dois pontos.
+3. O quatérnio do arraste é multiplicado pela orientação acumulada (`multiplicar`) e normalizado.
+4. `quaternio_para_matriz()` gera a matriz 4×4 que entra no lugar de `R` em `M = T @ R @ S`.
+
+**Gimbal Lock:** com ângulos de Euler, depois de girar 90° em Y, girar em X ou em Z dá o mesmo resultado e perde-se um eixo. O teste `test_sem_gimbal_lock` mostra isso acontecendo com as matrizes e mostra que com quatérnios não acontece.
 
 ---
 
-## Testes (127)
+## Roteiro para a apresentação
 
-* **Transformações:** rotações seguem a regra da mão direita. `RRᵀ = I`. `look_at` e `perspective` levam os pontos certos para os lugares certos. `perspective` coincide com `frustum`.
-* **Malhas:** normais unitárias e apontando para fora. Faces planas. Malha fechada e orientada. A subdivisão preserva a área, a normal e a orientação.
-* **Iluminação:**
-  * a lei do cosseno vale (luz a 60° gera metade da difusa);
-  * uma face de costas recebe só ambiente;
-  * o especular é máximo quando H = N;
-  * um *n* maior concentra o reflexo;
-  * desligar uma componente zera aquela parcela;
-  * a luz pontual e a direcional se comportam de forma diferente;
-  * a cor da luz multiplica a cor do material.
-* **Quatérnios:** `to_matrix()` dá o mesmo resultado que `Rx`/`Ry`/`Rz`. `i·j = k`. Compor quatérnios equivale a multiplicar matrizes. A norma continua 1 depois de 100 000 composições.
-* **Trackball:** arrastar para a direita gira em +Y. Ir e voltar retorna à identidade.
-* **Cores:** o RGB→HSV manual confere com `colorsys` e com `cv2.cvtColor`.
-
----
-
-## Roteiro sugerido para a demonstração em sala
-
-1. `python src/main.py`: aparece a pirâmide iluminada e a luz (esfera branca). Arraste com o mouse para usar o **trackball**.
-2. **Iluminação:**
-   * aperte `5` e `6` para ficar só com a ambiente (o objeto fica "chapado");
-   * religue a difusa (`5`) para o volume aparecer;
-   * religue a especular (`6`) para o reflexo aparecer;
-   * aperte `N` e mostre no painel o **N·L** de cada face mudando enquanto você gira o objeto.
-3. `M` faz a luz orbitar e as faces trocam de tom. `U` alterna para luz direcional. `7` muda a cor da luz. `J`/`K` mudam o brilho. `B` compara o modo detalhado com o flat.
-4. Setas, `X`/`Y`/`Z` e `+`/`-` aplicam as matrizes **T, R, S**. `R` reinicia.
-5. `Q`…`D` e `H` mudam a cor, e o terminal mostra a conversão **RGB → HSV** manual ao lado da do OpenCV.
-6. `V` abre o painel do OpenCV. Com `[` e `]`, o objeto assume a **cor média da máscara**.
-7. `2` e `3` trocam de sólido. `Espaço` liga a rotação automática por quatérnios.
-8. Para fechar, rode `pytest` (127 testes passando) e `python src/validar_iluminacao.py`.
+1. `python src/main.py`: abre a pirâmide iluminada. Arraste com o mouse (**trackball**).
+2. Aperte `5` e `6` para ficar só com a **ambiente**. Religue a `5` (**difusa**) e depois a `6` (**especular**).
+3. Aperte `N` para mostrar as normais e aponte no painel o `N · L` de cada face.
+4. Aperte `M` para a luz girar e as faces mudarem de tom. Mostre também `U`, `7`, `J`/`K` e `B`.
+5. Use setas, `X`/`Y`/`Z` e `+`/`-` para aplicar as matrizes **T, R, S**.
+6. Use `Q`…`D` e `H` para mudar a cor. O terminal mostra **RGB → HSV** (nossa conversão e a do OpenCV).
+7. Aperte `V` para abrir o OpenCV e `[` `]` para mudar a máscara. O objeto assume a cor segmentada.
+8. Para fechar, rode `pytest`.
